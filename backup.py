@@ -29,10 +29,11 @@ class ConfigBackup:
 
 
 class ConfigFileHandler(FileSystemEventHandler):
-    def __init__(self, backup_service):
-        self.backup = backup_service
+    def __init__(self, backup_services):
+        self.backups = backup_services
 
     def on_modified(self, event):
-        if event.src_path == self.backup.config_file:
-            self.backup.update_backup()
-            self.backup.restore_from_backup()
+        for backup in self.backups:
+            if event.src_path == backup.config_file:
+                backup.update_backup()
+                backup.restore_from_backup()

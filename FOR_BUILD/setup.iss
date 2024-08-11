@@ -1,5 +1,5 @@
 #define MyAppName "REDkit Config Restorer"
-#define MyAppVersion "0.1"
+#define MyAppVersion "0.2"
 #define MyAppPublisher "leviofanh"
 #define MyAppURL "https://github.com/leviofanh/redkit_config_restorer"
 #define MyAppExeName "REDkit_Config_Restorer.exe"
@@ -22,6 +22,9 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 Uninstallable=no
+CloseApplications=force
+RestartApplications=no
+CloseApplicationsFilter={#MyAppExeName}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -81,6 +84,28 @@ begin
       MsgBox('Не удалось создать папку для конфигурации', mbError, MB_OK)
     else if not SaveStringToFile(ConfigFile, DirPage.Values[0], False) then
       MsgBox('Не удалось сохранить конфигурационный файл', mbError, MB_OK)
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+  Uninstaller: String;
+  PrevPath: String;
+begin
+  Result := True;
+
+  if RegQueryStringValue(HKEY_CURRENT_USER,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1',
+    'UninstallString', Uninstaller) then
+  begin
+    RegQueryStringValue(HKEY_CURRENT_USER,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1',
+      'InstallLocation', PrevPath);
+    
+    DelTree(PrevPath, True, True, True);
+    
+    Result := True;
   end;
 end;
 

@@ -1,9 +1,10 @@
 #define MyAppName "REDkit Config Restorer"
-#define MyAppVersion "0.2"
+#define MyAppVersion "0.3"
 #define MyAppPublisher "leviofanh"
 #define MyAppURL "https://github.com/leviofanh/redkit_config_restorer"
 #define MyAppExeName "REDkit_Config_Restorer.exe"
 #define MyAppFolder "REDkitConfigRestorer"
+#define MyServiceName "REDkitConfigRestorer"
 
 [Setup]
 AppId={{5A814AAA-D4FD-42C9-965B-FAC5F0C9785B}
@@ -13,7 +14,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={localappdata}\{#MyAppFolder}
+DefaultDirName={commonpf}\{#MyAppFolder}
 DisableDirPage=yes
 InfoBeforeFile=desc.rtf
 OutputBaseFilename=REDkit Config Restorer
@@ -21,19 +22,17 @@ SetupIconFile=10979021.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-Uninstallable=no
+Uninstallable=yes
 CloseApplications=force
 RestartApplications=no
-CloseApplicationsFilter={#MyAppExeName}
+CloseApplicationsFilter=*{#MyAppExeName}
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Files]
 Source: "REDkit_Config_Restorer.exe"; DestDir: "{app}"; Flags: ignoreversion
-
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "REDkit Config Restorer"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue
+Source: "nssm.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Code]
 var
@@ -70,11 +69,103 @@ begin
     Result := True;
 end;
 
+procedure TerminateProcess(const FileName: string);
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "' + FileName + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure RemoveOldInstallation;
+var
+  OldPath, OldExePath: string;
+begin
+  TerminateProcess('{#MyAppExeName}');
+
+  OldPath := ExpandConstant('{localappdata}\{#MyAppFolder}');
+  OldExePath := OldPath + '\{#MyAppExeName}';
+  
+  if FileExists(OldExePath) then
+  begin
+    DeleteFile(OldExePath);
+  end;
+  
+  if FileExists(OldExePath) then
+  begin
+    if not DeleteFile(OldExePath) then
+    begin
+      if not DeleteFile(OldExePath) then
+      begin
+        MsgBox('Не удалось удалить файл ' + OldExePath + '. Пожалуйста, удалите его вручную после установки.', mbError, MB_OK);
+      end;
+    end;
+  end;
+
+  if DirExists(OldPath) then
+  begin
+    DelTree(OldPath, True, True, True);
+  end;
+  
+  RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#MyAppName}');
+end;
+
+procedure StopService;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\sc.exe'),
+       'stop ' + ExpandConstant('"{#MyServiceName}"'),
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  
+  Sleep(2000);
+end;
+
+procedure RemoveService;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\sc.exe'),
+       'delete ' + ExpandConstant('"{#MyServiceName}"'),
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure InstallService;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{app}\nssm.exe'),
+       'install ' + ExpandConstant('"{#MyServiceName}"') + ' ' + ExpandConstant('"{app}\{#MyAppExeName}"'),
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  
+  Exec(ExpandConstant('{app}\nssm.exe'),
+       'set ' + ExpandConstant('"{#MyServiceName}"') + ' Start SERVICE_AUTO_START',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{app}\nssm.exe'),
+       'set ' + ExpandConstant('"{#MyServiceName}"') + ' AppRestartDelay 10000',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure StartService;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\sc.exe'),
+       'start ' + ExpandConstant('"{#MyServiceName}"'),
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath: string;
   ConfigFile: string;
 begin
+  if CurStep = ssInstall then
+  begin
+    StopService;
+    RemoveService;
+    RemoveOldInstallation;
+  end;
+  
   if CurStep = ssPostInstall then
   begin
     ConfigPath := ExpandConstant('{app}');
@@ -83,31 +174,18 @@ begin
     if not ForceDirectories(ConfigPath) then
       MsgBox('Не удалось создать папку для конфигурации', mbError, MB_OK)
     else if not SaveStringToFile(ConfigFile, DirPage.Values[0], False) then
-      MsgBox('Не удалось сохранить конфигурационный файл', mbError, MB_OK)
+      MsgBox('Не удалось сохранить конфигурационный файл', mbError, MB_OK);
+    
+    InstallService;
+    StartService;
   end;
 end;
 
 function InitializeSetup(): Boolean;
-var
-  ResultCode: Integer;
-  Uninstaller: String;
-  PrevPath: String;
 begin
   Result := True;
-
-  if RegQueryStringValue(HKEY_CURRENT_USER,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1',
-    'UninstallString', Uninstaller) then
-  begin
-    RegQueryStringValue(HKEY_CURRENT_USER,
-      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1',
-      'InstallLocation', PrevPath);
-    
-    DelTree(PrevPath, True, True, True);
-    
-    Result := True;
-  end;
 end;
 
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить {#MyAppName}"; Flags: nowait postinstall skipifsilent
+[UninstallRun]
+Filename: "{sys}\sc.exe"; Parameters: "stop {#MyServiceName}"; Flags: runhidden
+Filename: "{sys}\sc.exe"; Parameters: "delete {#MyServiceName}"; Flags: runhidden

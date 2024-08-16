@@ -1,5 +1,5 @@
 #define MyAppName "REDkit Config Restorer"
-#define MyAppVersion "0.3"
+#define MyAppVersion "0.4"
 #define MyAppPublisher "leviofanh"
 #define MyAppURL "https://github.com/leviofanh/redkit_config_restorer"
 #define MyAppExeName "REDkit_Config_Restorer.exe"

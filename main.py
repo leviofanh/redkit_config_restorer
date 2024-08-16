@@ -1,21 +1,19 @@
-from backup import ConfigBackup, ConfigFileHandler
-from watchdog.observers import Observer
+from backup import ConfigBackup
 import time
 import os
 from config import read_path
 import logging
 import sys
-
+from logging.handlers import RotatingFileHandler
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('backup.log'),
+        RotatingFileHandler('backup.log', maxBytes=10*1024*1024, backupCount=3),
         logging.StreamHandler()
     ]
 )
-
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
@@ -31,35 +29,31 @@ redkit_dir = read_path()
 
 config_file_1 = os.path.join(redkit_dir, r'bin\r4LavaEditor2.ini')
 config_file_2 = os.path.join(redkit_dir, r'bin\r4LavaEditor2.sessions.ini')
-config_folder = os.path.join(redkit_dir, r'bin')
 
 cb1 = ConfigBackup(config_file_1)
 cb2 = ConfigBackup(config_file_2)
 
 cb1.create_backup_dir()
 cb1.create_backup()
-cb1.update_backup()
 cb1.restore_from_backup()
+cb1.update_backup()
 
 cb2.create_backup_dir()
 cb2.create_backup()
-cb2.update_backup()
 cb2.restore_from_backup()
+cb2.update_backup()
 
-event_handler = ConfigFileHandler([cb1, cb2])
-
-observer = Observer()
-observer.schedule(event_handler, config_folder, recursive=False)
-observer.start()
+backup_services = [cb1, cb2]
 
 try:
     while True:
+        for backup in backup_services:
+            backup.check_for_changes()
         time.sleep(1)
 except KeyboardInterrupt:
-    observer.stop()
     logging.info('Наблюдатель остановлен пользователем.')
 except Exception as e:
     logging.error(f'Ошибка: {e}', exc_info=True)
 finally:
-    observer.join()
     logging.info('Программа завершена.')
+
